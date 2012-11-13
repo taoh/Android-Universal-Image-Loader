@@ -98,6 +98,7 @@ class ImageDecoder {
 
 	private Options getBitmapOptionsForImageDecoding(ImageSize targetSize, ImageScaleType scaleType, ViewScaleType viewScaleType) throws IOException {
 		Options options = new Options();
+		options.inPreferredConfig = Bitmap.Config.RGB_565;
 		options.inSampleSize = computeImageScale(targetSize, scaleType, viewScaleType);
 		return options;
 	}
