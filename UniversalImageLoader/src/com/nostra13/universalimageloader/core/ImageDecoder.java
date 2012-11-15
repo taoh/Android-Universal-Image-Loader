@@ -132,7 +132,7 @@ class ImageDecoder {
 
 		if (viewScaleType == ViewScaleType.FIT_INSIDE) {
 			if (scaleType == ImageScaleType.IN_SAMPLE_POWER_OF_2 || scaleType == ImageScaleType.POWER_OF_2) {
-				while (imageWidth / 2 >= targetWidth || imageHeight / 2 >= targetHeight) { // ||
+				while (imageWidth / 2 >= targetWidth && imageHeight / 2 >= targetHeight) { // ||
 					imageWidth /= 2;
 					imageHeight /= 2;
 					scale *= 2;
