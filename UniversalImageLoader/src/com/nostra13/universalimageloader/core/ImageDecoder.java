@@ -7,6 +7,7 @@ import java.net.URI;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.BitmapFactory.Options;
+import android.os.SystemClock;
 import android.util.Log;
 
 import com.nostra13.universalimageloader.core.assist.ImageScaleType;
@@ -76,7 +77,11 @@ class ImageDecoder {
 	 * @throws IOException
 	 */
 	public Bitmap decode(ImageSize targetSize, ImageScaleType scaleType, ViewScaleType viewScaleType) throws IOException {
-		Options decodeOptions = getBitmapOptionsForImageDecoding(targetSize, scaleType, viewScaleType);
+		// this is pretty time consuming as it downloads the bitmap twice, once for the scale type
+		// once for the real data. Instead, we first download and then try to sample it
+		// which may cause bigger memory usage but is considerably faster
+		Options decodeOptions =  new BitmapFactory.Options(); //getBitmapOptionsForImageDecoding(targetSize, scaleType, viewScaleType);
+		decodeOptions.inPreferredConfig = Bitmap.Config.RGB_565;
 		InputStream imageStream = imageDownloader.getStream(imageUri);
 		Bitmap subsampledBitmap;
 		try {
@@ -87,40 +92,41 @@ class ImageDecoder {
 		if (subsampledBitmap == null) {
 			return null;
 		}
-
 		// Scale to exact size if need
 		if (scaleType == ImageScaleType.EXACTLY || scaleType == ImageScaleType.EXACTLY_STRETCHED) {
 			subsampledBitmap = scaleImageExactly(subsampledBitmap, targetSize, scaleType, viewScaleType);
+		}else{
+			int inSampleSize = computeImageScale(subsampledBitmap, targetSize, scaleType, viewScaleType);
+			decodeOptions.inSampleSize = inSampleSize;
+			if (inSampleSize > 1){
+				double scale = Math.pow(2.0, (inSampleSize-1));
+				Bitmap scaledBitmap = Bitmap.createScaledBitmap(subsampledBitmap, 
+						(int)(subsampledBitmap.getWidth() / scale), 
+						(int)(subsampledBitmap.getWidth() / scale),
+						true);
+				subsampledBitmap.recycle();
+				subsampledBitmap = scaledBitmap;
+			}
 		}
-
+		
 		return subsampledBitmap;
 	}
 
-	private Options getBitmapOptionsForImageDecoding(ImageSize targetSize, ImageScaleType scaleType, ViewScaleType viewScaleType) throws IOException {
-		Options options = new Options();
-		options.inPreferredConfig = Bitmap.Config.RGB_565;
-		options.inSampleSize = computeImageScale(targetSize, scaleType, viewScaleType);
-		return options;
-	}
+//	private Options getBitmapOptionsForImageDecoding(ImageSize targetSize, ImageScaleType scaleType, ViewScaleType viewScaleType) throws IOException {
+//		Options options = new Options();
+//		options.inPreferredConfig = Bitmap.Config.RGB_565;
+//		options.inSampleSize = computeImageScale(targetSize, scaleType, viewScaleType);
+//		return options;
+//	}
 
 	@SuppressWarnings("deprecation")
-	private int computeImageScale(ImageSize targetSize, ImageScaleType scaleType, ViewScaleType viewScaleType) throws IOException {
+	private int computeImageScale(Bitmap bitmap, ImageSize targetSize, ImageScaleType scaleType, ViewScaleType viewScaleType) throws IOException {
 		int targetWidth = targetSize.getWidth();
 		int targetHeight = targetSize.getHeight();
 
-		// decode image size
-		Options options = new Options();
-		options.inJustDecodeBounds = true;
-		InputStream imageStream = imageDownloader.getStream(imageUri);
-		try {
-			BitmapFactory.decodeStream(imageStream, null, options);
-		} finally {
-			imageStream.close();
-		}
-
 		int scale = 1;
-		int imageWidth = options.outWidth;
-		int imageHeight = options.outHeight;
+		int imageWidth = bitmap.getWidth();
+		int imageHeight = bitmap.getHeight();
 		int widthScale = imageWidth / targetWidth;
 		int heightScale = imageHeight / targetHeight;
 
