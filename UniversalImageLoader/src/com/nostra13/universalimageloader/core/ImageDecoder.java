@@ -36,7 +36,8 @@ class ImageDecoder {
 
 	/**
 	 * @param imageUri
-	 *            Image URI (<b>i.e.:</b> "http://site.com/image.png", "file:///mnt/sdcard/image.png")
+	 *            Image URI (<b>i.e.:</b> "http://site.com/image.png",
+	 *            "file:///mnt/sdcard/image.png")
 	 * @param imageDownloader
 	 *            Image downloader
 	 * 
@@ -47,8 +48,9 @@ class ImageDecoder {
 	}
 
 	/**
-	 * Decodes image from URI into {@link Bitmap}. Image is scaled close to incoming {@link ImageSize image size} during
-	 * decoding (depend on incoming image scale type).
+	 * Decodes image from URI into {@link Bitmap}. Image is scaled close to
+	 * incoming {@link ImageSize image size} during decoding (depend on incoming
+	 * image scale type).
 	 * 
 	 * @param targetSize
 	 *            Image size to scale to during decoding
@@ -58,13 +60,15 @@ class ImageDecoder {
 	 * @return Decoded bitmap
 	 * @throws IOException
 	 */
-	public Bitmap decode(ImageSize targetSize, ImageScaleType scaleType) throws IOException {
+	public Bitmap decode(ImageSize targetSize, ImageScaleType scaleType)
+			throws IOException {
 		return decode(targetSize, scaleType, ViewScaleType.FIT_INSIDE);
 	}
 
 	/**
-	 * Decodes image from URI into {@link Bitmap}. Image is scaled close to incoming {@link ImageSize image size} during
-	 * decoding (depend on incoming image scale type).
+	 * Decodes image from URI into {@link Bitmap}. Image is scaled close to
+	 * incoming {@link ImageSize image size} during decoding (depend on incoming
+	 * image scale type).
 	 * 
 	 * @param targetSize
 	 *            Image size to scale to during decoding
@@ -76,16 +80,41 @@ class ImageDecoder {
 	 * @return Decoded bitmap
 	 * @throws IOException
 	 */
-	public Bitmap decode(ImageSize targetSize, ImageScaleType scaleType, ViewScaleType viewScaleType) throws IOException {
-		// this is pretty time consuming as it downloads the bitmap twice, once for the scale type
-		// once for the real data. Instead, we first download and then try to sample it
+	public Bitmap decode(ImageSize targetSize, ImageScaleType scaleType,
+			ViewScaleType viewScaleType) throws IOException {
+		// this is pretty time consuming as it downloads the bitmap twice, once
+		// for the scale type
+		// once for the real data. Instead, we first download and then try to
+		// sample it
 		// which may cause bigger memory usage but is considerably faster
-		Options decodeOptions =  new BitmapFactory.Options(); //getBitmapOptionsForImageDecoding(targetSize, scaleType, viewScaleType);
+		Options decodeOptions = new BitmapFactory.Options(); // getBitmapOptionsForImageDecoding(targetSize,
+																// scaleType,
+																// viewScaleType);
 		decodeOptions.inPreferredConfig = Bitmap.Config.RGB_565;
 		InputStream imageStream = imageDownloader.getStream(imageUri);
+		if ("file".equals(imageUri.getScheme())) {
+			try {
+				// check decodeOptions
+				decodeOptions.inJustDecodeBounds = true;
+				BitmapFactory.decodeStream(imageStream, null, decodeOptions);
+				int outWidth = decodeOptions.outWidth;
+				int outHeight = decodeOptions.outHeight;
+				ImageSize bitmapSize = new ImageSize(outWidth, outHeight);
+				// calculate the samplesize
+				int inSampleSize = computeImageScale(bitmapSize, targetSize,
+						scaleType, viewScaleType);
+				decodeOptions.inSampleSize = inSampleSize;
+				decodeOptions.inJustDecodeBounds = false;
+			} finally {
+				imageStream.close();
+				imageStream = imageDownloader.getStream(imageUri);
+			}
+		}
+
 		Bitmap subsampledBitmap;
 		try {
-			subsampledBitmap = BitmapFactory.decodeStream(imageStream, null, decodeOptions);
+			subsampledBitmap = BitmapFactory.decodeStream(imageStream, null,
+					decodeOptions);
 		} finally {
 			imageStream.close();
 		}
@@ -93,46 +122,56 @@ class ImageDecoder {
 			return null;
 		}
 		// Scale to exact size if need
-		if (scaleType == ImageScaleType.EXACTLY || scaleType == ImageScaleType.EXACTLY_STRETCHED) {
-			subsampledBitmap = scaleImageExactly(subsampledBitmap, targetSize, scaleType, viewScaleType);
-		}else{
-			int inSampleSize = computeImageScale(subsampledBitmap, targetSize, scaleType, viewScaleType);
-			decodeOptions.inSampleSize = inSampleSize;
-			if (inSampleSize > 1){
-				double scale = Math.pow(2.0, (inSampleSize-1));
-				Bitmap scaledBitmap = Bitmap.createScaledBitmap(subsampledBitmap, 
-						(int)(subsampledBitmap.getWidth() / scale), 
-						(int)(subsampledBitmap.getHeight() / scale),
-						true);
+		if (scaleType == ImageScaleType.EXACTLY
+				|| scaleType == ImageScaleType.EXACTLY_STRETCHED) {
+			subsampledBitmap = scaleImageExactly(subsampledBitmap, targetSize,
+					scaleType, viewScaleType);
+		} else {
+			int inSampleSize = computeImageScale(
+					new ImageSize(subsampledBitmap.getWidth(),
+							subsampledBitmap.getHeight()), targetSize,
+					scaleType, viewScaleType);
+			if (inSampleSize > 1) {
+				Bitmap scaledBitmap = Bitmap.createScaledBitmap(
+						subsampledBitmap,
+						(subsampledBitmap.getWidth() / inSampleSize),
+						(subsampledBitmap.getHeight() / inSampleSize), true);
 				subsampledBitmap.recycle();
 				subsampledBitmap = scaledBitmap;
 			}
 		}
-		
+
 		return subsampledBitmap;
 	}
 
-//	private Options getBitmapOptionsForImageDecoding(ImageSize targetSize, ImageScaleType scaleType, ViewScaleType viewScaleType) throws IOException {
-//		Options options = new Options();
-//		options.inPreferredConfig = Bitmap.Config.RGB_565;
-//		options.inSampleSize = computeImageScale(targetSize, scaleType, viewScaleType);
-//		return options;
-//	}
+	// private Options getBitmapOptionsForImageDecoding(ImageSize targetSize,
+	// ImageScaleType scaleType, ViewScaleType viewScaleType) throws IOException
+	// {
+	// Options options = new Options();
+	// options.inPreferredConfig = Bitmap.Config.RGB_565;
+	// options.inSampleSize = computeImageScale(targetSize, scaleType,
+	// viewScaleType);
+	// return options;
+	// }
 
 	@SuppressWarnings("deprecation")
-	private int computeImageScale(Bitmap bitmap, ImageSize targetSize, ImageScaleType scaleType, ViewScaleType viewScaleType) throws IOException {
+	private int computeImageScale(ImageSize bitmapSize, ImageSize targetSize,
+			ImageScaleType scaleType, ViewScaleType viewScaleType)
+			throws IOException {
 		int targetWidth = targetSize.getWidth();
 		int targetHeight = targetSize.getHeight();
 
 		int scale = 1;
-		int imageWidth = bitmap.getWidth();
-		int imageHeight = bitmap.getHeight();
+		int imageWidth = bitmapSize.getWidth();
+		int imageHeight = bitmapSize.getHeight();
 		int widthScale = imageWidth / targetWidth;
 		int heightScale = imageHeight / targetHeight;
 
 		if (viewScaleType == ViewScaleType.FIT_INSIDE) {
-			if (scaleType == ImageScaleType.IN_SAMPLE_POWER_OF_2 || scaleType == ImageScaleType.POWER_OF_2) {
-				while (imageWidth / 2 >= targetWidth && imageHeight / 2 >= targetHeight) { // ||
+			if (scaleType == ImageScaleType.IN_SAMPLE_POWER_OF_2
+					|| scaleType == ImageScaleType.POWER_OF_2) {
+				while (imageWidth / 2 >= targetWidth
+						&& imageHeight / 2 >= targetHeight) { // ||
 					imageWidth /= 2;
 					imageHeight /= 2;
 					scale *= 2;
@@ -141,8 +180,10 @@ class ImageDecoder {
 				scale = Math.max(widthScale, heightScale); // max
 			}
 		} else { // ViewScaleType.CROP
-			if (scaleType == ImageScaleType.IN_SAMPLE_POWER_OF_2 || scaleType == ImageScaleType.POWER_OF_2) {
-				while (imageWidth / 2 >= targetWidth && imageHeight / 2 >= targetHeight) { // &&
+			if (scaleType == ImageScaleType.IN_SAMPLE_POWER_OF_2
+					|| scaleType == ImageScaleType.POWER_OF_2) {
+				while (imageWidth / 2 >= targetWidth
+						&& imageHeight / 2 >= targetHeight) { // &&
 					imageWidth /= 2;
 					imageHeight /= 2;
 					scale *= 2;
@@ -156,11 +197,15 @@ class ImageDecoder {
 			scale = 1;
 		}
 
-		if (loggingEnabled) Log.d(ImageLoader.TAG, String.format(LOG_IMAGE_SUBSAMPLED, imageWidth, imageHeight, targetWidth, targetHeight, scale));
+		if (loggingEnabled)
+			Log.d(ImageLoader.TAG, String.format(LOG_IMAGE_SUBSAMPLED,
+					imageWidth, imageHeight, targetWidth, targetHeight, scale));
 		return scale;
 	}
 
-	private Bitmap scaleImageExactly(Bitmap subsampledBitmap, ImageSize targetSize, ImageScaleType scaleType, ViewScaleType viewScaleType) {
+	private Bitmap scaleImageExactly(Bitmap subsampledBitmap,
+			ImageSize targetSize, ImageScaleType scaleType,
+			ViewScaleType viewScaleType) {
 		float srcWidth = subsampledBitmap.getWidth();
 		float srcHeight = subsampledBitmap.getHeight();
 
@@ -169,7 +214,8 @@ class ImageDecoder {
 
 		int destWidth;
 		int destHeight;
-		if ((viewScaleType == ViewScaleType.FIT_INSIDE && widthScale >= heightScale) || (viewScaleType == ViewScaleType.CROP && widthScale < heightScale)) {
+		if ((viewScaleType == ViewScaleType.FIT_INSIDE && widthScale >= heightScale)
+				|| (viewScaleType == ViewScaleType.CROP && widthScale < heightScale)) {
 			destWidth = targetSize.getWidth();
 			destHeight = (int) (srcHeight / widthScale);
 		} else {
@@ -179,10 +225,14 @@ class ImageDecoder {
 
 		Bitmap scaledBitmap;
 		if ((scaleType == ImageScaleType.EXACTLY && destWidth < srcWidth && destHeight < srcHeight)
-				|| (scaleType == ImageScaleType.EXACTLY_STRETCHED && destWidth != srcWidth && destHeight != srcHeight)) {
-			scaledBitmap = Bitmap.createScaledBitmap(subsampledBitmap, destWidth, destHeight, true);
+				|| (scaleType == ImageScaleType.EXACTLY_STRETCHED
+						&& destWidth != srcWidth && destHeight != srcHeight)) {
+			scaledBitmap = Bitmap.createScaledBitmap(subsampledBitmap,
+					destWidth, destHeight, true);
 			subsampledBitmap.recycle();
-			if (loggingEnabled) Log.d(ImageLoader.TAG, String.format(LOG_IMAGE_SCALED, (int) srcWidth, (int) srcHeight, destWidth, destHeight));
+			if (loggingEnabled)
+				Log.d(ImageLoader.TAG, String.format(LOG_IMAGE_SCALED,
+						(int) srcWidth, (int) srcHeight, destWidth, destHeight));
 		} else {
 			scaledBitmap = subsampledBitmap;
 		}
