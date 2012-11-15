@@ -102,7 +102,7 @@ class ImageDecoder {
 				double scale = Math.pow(2.0, (inSampleSize-1));
 				Bitmap scaledBitmap = Bitmap.createScaledBitmap(subsampledBitmap, 
 						(int)(subsampledBitmap.getWidth() / scale), 
-						(int)(subsampledBitmap.getWidth() / scale),
+						(int)(subsampledBitmap.getHeight() / scale),
 						true);
 				subsampledBitmap.recycle();
 				subsampledBitmap = scaledBitmap;
